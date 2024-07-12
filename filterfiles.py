@@ -1,97 +1,56 @@
-# -*- coding: utf-8 -*-
-"""
-@ File         : filterfiles.py
-@ Author       : Wcy
-@ Contact      : 
-@ Date         : 2024-01-03 11:08:47
-@ Description  : 
-"""
-
 import pathlib
-
-FILE_SIZE_1MB = 1024 # megabytes = 1024 * bytes
+from typing import List, Callable
 
 
 class FileFilter:
-    def __init__(self, root_dir=pathlib.Path.cwd()):
-        '''
-        Locate all eligible files in the specified
-        root directory
-        '''
-        self._root_dir = root_dir
-        self._files = []
-        self._filter_engine = None
+    def __init__(self, root_dir: pathlib.Path = pathlib.Path.cwd()):
+        self.root_dir = root_dir
+        self.files = []
+        self.filter_engine: Callable = None
 
-    def scan_dir(self, path: pathlib.Path):
-        # Find videos in current directory
-        for x in path.iterdir():
-            if x.is_file():
-                if self._filter_engine(x):
-                    self._files.append(x)
-            elif x.is_dir():
-                self.scan_dir(x)
-            else:
-                pass
+    def scan_dir(self):
+        for path in self.root_dir.rglob('*'):
+            if path.is_file() and self.filter_engine(path):
+                self.files.append(path)
 
-    def set_root_dir(self, root_dir: str| pathlib.Path):
-        if isinstance(root_dir, str):
-            root_dir = pathlib.Path(root_dir)
-        self._root_dir = root_dir
-
-    def set_filter_engine(self, engine: callable):
-        self._filter_engine = engine
+    def set_filter_engine(self, engine: Callable):
+        self.filter_engine = engine
 
     def start(self):
-        if self._filter_engine is None:
-            raise Exception('There is no filter engine.')
-        
-        self._files = []
-        self.scan_dir(self._root_dir)
+        if self.filter_engine is None:
+            raise ValueError('Filter engine is not set.')
+        self.files.clear()
+        self.scan_dir()
 
-    def result(self) -> list:
-        return self._files
+    def get_files(self) -> List[pathlib.Path]:
+        return self.files
 
 
-def filter_engine_for_bigsize_videos(fn: pathlib.Path) -> bool:
-    if fn.suffix.lower() in ['.mp4', '.avi', '.mov', '.wmv', '3gp', '.rmvb', '.flv'] \
-        and fn.stat().st_size > FILE_SIZE_1MB * 600:
-        return True
-    return False
-    
+def filter_engine_for_bigsize_videos(file_path: pathlib.Path) -> bool:
+    video_extensions = ('.mp4', '.avi', '.mov', '.wmv', '.3gp', '.rmvb', '.flv')
+    file_size_1mb = 1024 * 1024  # Correct definition of 1 MB
+    return file_path.suffix.lower() in video_extensions and file_path.stat().st_size > file_size_1mb * 600
 
-def move_action(dest: pathlib.Path|str, srcs: list):
-    # Copy the filtered files to the specified directory
-    # create destination directory, if not exist
-    dest.mkdir(511, True, True)
 
-    print(f'Find {len(srcs)} files in total.')
-    x: pathlib.Path
-    for n, x in enumerate(srcs):
-        print(f'Move {n+1} name: {x.name} ...')
-        x.rename(dest / x.name)
+def move_files(destination: pathlib.Path, sources: List[pathlib.Path]):
+    destination.mkdir(parents=True, exist_ok=True)
+
+    print(f'Found {len(sources)} files in total.')
+    for index, source in enumerate(sources, start=1):
+        print(f'Moving {index}: {source.name}...')
+        # destination.joinpath(source.name).write_bytes(source.read_bytes())
+        source.rename(destination.joinpath(source.name))
 
 
 def main():
     root_dir = pathlib.Path('.')
     dest_dir = pathlib.Path('video')
-    obj_filter = FileFilter()
-    print('Set root directory.')
-    obj_filter.set_root_dir(root_dir)
-    print('Set engine.')
-    obj_filter.set_filter_engine(filter_engine_for_bigsize_videos)
-    print('Start filtering files.')
-    obj_filter.start()
-    print('Move filtered files.')
-    move_action(dest_dir, obj_filter.result())
-    print('Success.')
-
-
-def test():
-    # Watch the file attributes
-    fn = pathlib.Path(__file__)
-    print(fn.stat())
+    file_filter = FileFilter(root_dir=root_dir)
+    file_filter.set_filter_engine(filter_engine_for_bigsize_videos)
+    file_filter.start()
+    move_files(dest_dir, file_filter.get_files())
+    print('Operation completed successfully.')
 
 
 if __name__ == '__main__':
-    # test()
     main()
